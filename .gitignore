@@ -16,8 +16,10 @@ dist/
 models/whisper/
 *.bin
 
-# macOS 시스템 파일
-.DS_Store
+# Windows 시스템 파일
+Thumbs.db
+Desktop.ini
+*.lnk
 
 # 사용자 작업물 / 테스트 영상
 samples/

@@ -37,7 +37,7 @@ def main():
         return f"v{customtkinter.__version__}"
     ok &= check("customtkinter", _ctk)
 
-    # tkinter 자체(맥에서 자주 빠지는 부분 - CustomTkinter의 기반)
+    # tkinter 자체(CustomTkinter의 기반 - Windows 공식 파이썬엔 기본 포함)
     def _tk():
         import tkinter
         return f"Tcl/Tk {tkinter.TkVersion}"
