@@ -1,0 +1,24 @@
+# 파이썬 가상환경 (절대 깃에 올리지 않음)
+.venv/
+venv/
+env/
+
+# 파이썬 캐시
+__pycache__/
+*.pyc
+
+# PyInstaller 빌드 산출물
+build/
+dist/
+*.spec.bak
+
+# 다운로드된 모델 가중치(용량이 큼 - 빌드 시 내장)
+models/whisper/
+*.bin
+
+# macOS 시스템 파일
+.DS_Store
+
+# 사용자 작업물 / 테스트 영상
+samples/
+output/
