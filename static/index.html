@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutoCut</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --card: #161616;
+    --border: #262626;
+    --text: #e5e5e5;
+    --muted: #737373;
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,.12);
+    --font: 'SF Mono','Fira Code','Consolas',monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; }
+
+  body { display: flex; flex-direction: column; align-items: center; padding: 48px 16px 80px; gap: 32px; }
+
+  h1 { font-size: 18px; font-weight: 600; letter-spacing: -.02em; color: var(--text); }
+  h1 span { color: var(--green); }
+
+  /* Drop zone */
+  #drop {
+    width: 100%; max-width: 560px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    position: relative;
+  }
+  #drop.over { border-color: var(--green); background: var(--green-dim); }
+  #drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  #drop .icon { font-size: 32px; margin-bottom: 12px; }
+  #drop .hint { color: var(--muted); line-height: 1.6; }
+  #drop .hint strong { color: var(--text); }
+  #file-name { margin-top: 10px; color: var(--green); font-size: 12px; }
+
+  /* Progress */
+  #progress {
+    width: 100%; max-width: 560px; display: none; flex-direction: column; gap: 0;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden;
+  }
+
+  /* Progress bar track */
+  #pbar-track {
+    height: 2px; background: var(--border); position: relative;
+  }
+  #pbar-fill {
+    height: 100%; width: 0%; background: var(--green);
+    transition: width .5s cubic-bezier(.4,0,.2,1);
+    box-shadow: 0 0 8px var(--green);
+  }
+
+  /* Step rows */
+  .step-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted); font-size: 12px;
+    transition: background .2s;
+  }
+  .step-row:last-child { border-bottom: none; }
+  .step-row.active { color: var(--text); background: rgba(34,197,94,.04); }
+  .step-row.done { color: var(--green); }
+
+  .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--border); flex-shrink: 0;
+    transition: background .2s, box-shadow .2s;
+  }
+  .step-row.active .dot { background: var(--green); box-shadow: 0 0 7px var(--green); animation: pulse 1s infinite; }
+  .step-row.done .dot { background: var(--green); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .step-label { flex: 1; }
+  .step-badge {
+    font-size: 11px; font-variant-numeric: tabular-nums;
+    color: var(--muted); background: var(--border);
+    border-radius: 4px; padding: 1px 7px;
+    opacity: 0; transition: opacity .3s;
+  }
+  .step-row.active .step-badge { color: var(--green); background: var(--green-dim); opacity: 1; }
+  .step-row.done .step-badge { opacity: 1; }
+
+  /* Stats card */
+  #stats {
+    width: 100%; max-width: 560px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; display: none;
+  }
+  .stats-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px 0; }
+  .stat-item { display: flex; flex-direction: column; gap: 4px; }
+  .stat-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .stat-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+  .stat-value.green { color: var(--green); }
+  hr.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .draft-chip {
+    display: inline-block; background: var(--green-dim); color: var(--green);
+    border: 1px solid rgba(34,197,94,.3); border-radius: 4px;
+    padding: 2px 8px; font-size: 11px; font-family: var(--font);
+    word-break: break-all;
+  }
+
+  /* Transcript */
+  #transcript {
+    width: 100%; max-width: 560px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; display: none; max-height: 320px; overflow-y: auto;
+  }
+  #transcript h3 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px; }
+  .sub-row { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .sub-row:last-child { border-bottom: none; }
+  .sub-time { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 90px; flex-shrink: 0; }
+  .sub-text { color: var(--text); line-height: 1.5; }
+
+  /* Error */
+  #error-box {
+    width: 100%; max-width: 560px;
+    background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3);
+    border-radius: 8px; padding: 14px 16px; color: #f87171;
+    font-size: 12px; display: none;
+  }
+
+  /* Silence settings */
+  #settings {
+    width: 100%; max-width: 560px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; display: flex; flex-direction: column; gap: 16px;
+  }
+  #settings h2 { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; }
+  .slider-header { display: flex; justify-content: space-between; align-items: baseline; }
+  .slider-label { font-size: 12px; color: var(--text); }
+  .slider-val {
+    font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--green);
+  }
+  .slider-desc { font-size: 11px; color: var(--muted); }
+  input[type=range] {
+    -webkit-appearance: none; width: 100%; height: 2px;
+    background: var(--border); border-radius: 2px; outline: none; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--green); box-shadow: 0 0 5px var(--green); cursor: pointer;
+    transition: box-shadow .15s;
+  }
+  input[type=range]:hover::-webkit-slider-thumb { box-shadow: 0 0 9px var(--green); }
+
+  /* Live preview panel */
+  #preview-bar {
+    display: none; align-items: center; gap: 0;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden;
+  }
+  .pv-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 3px; padding: 10px 0;
+    border-right: 1px solid var(--border);
+  }
+  .pv-item:last-child { border-right: none; }
+  .pv-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .pv-val { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+  .pv-val.green { color: var(--green); }
+
+  /* Upload progress */
+  #upload-progress {
+    display: none; flex-direction: column; gap: 5px;
+    margin-top: 12px;
+  }
+  #upload-bar-track {
+    width: 100%; height: 2px; background: var(--border); border-radius: 2px;
+  }
+  #upload-bar-fill {
+    height: 100%; width: 0%; background: var(--green); border-radius: 2px;
+    transition: width .2s linear; box-shadow: 0 0 6px var(--green);
+  }
+  #upload-info {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+
+  /* Analyzing spinner */
+  #analyze-status {
+    font-size: 11px; color: var(--muted); display: none; align-items: center; gap: 6px;
+  }
+  .spin {
+    width: 10px; height: 10px; border: 1.5px solid var(--border);
+    border-top-color: var(--green); border-radius: 50%;
+    animation: spin .7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Progress readout (진행률 / 경과 / 남은 시간) */
+  .prog-readout {
+    display: flex; border-bottom: 1px solid var(--border);
+  }
+  .pr-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 2px; padding: 12px 0; border-right: 1px solid var(--border);
+  }
+  .pr-item:last-child { border-right: none; }
+  .pr-val {
+    font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text);
+  }
+  .pr-item.accent .pr-val { color: var(--green); }
+  .pr-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+
+  /* Buttons row */
+  .btn-row { display: flex; gap: 10px; align-items: center; }
+
+  button#run-btn {
+    background: var(--green); color: #000; border: none; border-radius: 6px;
+    padding: 8px 20px; font-family: var(--font); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: opacity .15s;
+  }
+  button#run-btn:hover { opacity: .85; }
+  button#run-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Secondary buttons */
+  .sec-btn {
+    display: none; align-items: center; gap: 6px;
+    background: transparent;
+    border: 1px solid rgba(34,197,94,.4); border-radius: 6px;
+    padding: 7px 14px; font-family: var(--font); font-size: 12px; font-weight: 600;
+    cursor: pointer; text-decoration: none; transition: background .15s, border-color .15s;
+  }
+  .sec-btn:hover { background: var(--green-dim); border-color: var(--green); }
+  #srt-btn  { color: var(--green); }
+  #open-btn { color: var(--green); }
+
+  /* Mode toggle */
+  #mode-toggle {
+    width: 100%; max-width: 560px; display: flex; gap: 0;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 3px; overflow: hidden;
+  }
+  .mode-btn {
+    flex: 1; background: transparent; color: var(--muted);
+    border: none; border-radius: 6px; padding: 9px 0;
+    font-family: var(--font); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: background .15s, color .15s;
+  }
+  .mode-btn.active { background: var(--green-dim); color: var(--green); }
+
+  /* YouTube row */
+  #yt-row {
+    width: 100%; max-width: 560px; display: flex; gap: 8px;
+  }
+  #yt-url {
+    flex: 1; background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; color: var(--text);
+    font-family: var(--font); font-size: 12px; outline: none;
+    transition: border-color .15s;
+  }
+  #yt-url:focus { border-color: var(--green); }
+  #yt-btn {
+    background: transparent; color: var(--green);
+    border: 1px solid rgba(34,197,94,.4); border-radius: 8px;
+    padding: 0 16px; font-family: var(--font); font-size: 12px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; transition: background .15s;
+  }
+  #yt-btn:hover { background: var(--green-dim); }
+  #yt-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Highlight settings */
+  #hl-settings {
+    width: 100%; max-width: 560px; display: none; flex-direction: column; gap: 16px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px;
+  }
+  #hl-settings h2 { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  #hl-heatmap-note {
+    font-size: 11px; color: var(--muted); padding: 8px 10px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  }
+  #hl-heatmap-note.on { color: var(--green); border-color: rgba(34,197,94,.3); }
+
+  /* Gemini API key row */
+  .key-row { display: flex; flex-direction: column; gap: 7px;
+    padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+  .key-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .key-status { font-size: 11px; font-weight: 600; }
+  .key-status.set { color: var(--green); }
+  .key-status.unset { color: #f87171; }
+  .key-input-row { display: flex; gap: 8px; }
+  #key-input {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 11px; color: var(--text);
+    font-family: var(--font); font-size: 12px; outline: none; transition: border-color .15s;
+  }
+  #key-input:focus { border-color: var(--green); }
+  #key-save, .key-clear {
+    background: transparent; border: 1px solid rgba(34,197,94,.4); border-radius: 6px;
+    padding: 0 14px; font-family: var(--font); font-size: 12px; font-weight: 600;
+    color: var(--green); cursor: pointer; white-space: nowrap; transition: background .15s;
+  }
+  #key-save:hover { background: var(--green-dim); }
+  .key-clear { border-color: rgba(239,68,68,.4); color: #f87171; display: none; }
+  .key-clear:hover { background: rgba(239,68,68,.1); }
+  .key-row a { color: var(--green); text-decoration: none; }
+  .key-row code { background: var(--bg); padding: 1px 4px; border-radius: 3px; border: 1px solid var(--border); }
+
+  /* Segmented toggle (edit mode) */
+  .seg-toggle { display: flex; gap: 0; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 7px; padding: 3px; }
+  .seg-btn {
+    flex: 1; background: transparent; color: var(--muted); border: none; border-radius: 5px;
+    padding: 8px 0; font-family: var(--font); font-size: 11px; font-weight: 600;
+    cursor: pointer; transition: background .15s, color .15s;
+  }
+  .seg-btn.active { background: var(--green-dim); color: var(--green); }
+
+  /* Highlight progress */
+  #hl-progress {
+    width: 100%; max-width: 560px; display: none; flex-direction: column;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  #hl-pbar-track { height: 2px; background: var(--border); }
+  #hl-pbar-fill {
+    height: 100%; width: 0%; background: var(--green);
+    transition: width .5s cubic-bezier(.4,0,.2,1); box-shadow: 0 0 8px var(--green);
+  }
+  #hl-elapsed {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--muted); padding: 6px 18px 10px; font-variant-numeric: tabular-nums;
+  }
+  #hl-elapsed .est { color: var(--green); }
+
+  /* Highlight result cards */
+  #hl-results { width: 100%; max-width: 560px; display: none; flex-direction: column; gap: 12px; }
+  .clip-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .clip-head { display: flex; align-items: baseline; gap: 8px; }
+  .clip-rank {
+    font-size: 11px; font-weight: 700; color: #000; background: var(--green);
+    border-radius: 4px; padding: 1px 7px; flex-shrink: 0;
+  }
+  .clip-title { font-size: 14px; font-weight: 700; color: var(--text); flex: 1; line-height: 1.4; }
+  .clip-score { font-size: 11px; color: var(--green); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .clip-meta { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; display: flex; gap: 12px; }
+  .clip-reason { font-size: 12px; color: var(--text); line-height: 1.5; opacity: .85; }
+  .clip-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .clip-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: transparent; border: 1px solid rgba(34,197,94,.4); border-radius: 6px;
+    padding: 5px 11px; font-family: var(--font); font-size: 11px; font-weight: 600;
+    color: var(--green); cursor: pointer; text-decoration: none; transition: background .15s;
+  }
+  .clip-chip:hover { background: var(--green-dim); }
+  .clip-path {
+    font-size: 10px; color: var(--muted); word-break: break-all;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 7px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Auto<span>Cut</span></h1>
+
+<div id="mode-toggle">
+  <button class="mode-btn active" data-mode="silence">✂️ 무음 컷</button>
+  <button class="mode-btn" data-mode="highlight">✨ 하이라이트 추출</button>
+</div>
+
+<div id="yt-row">
+  <input id="yt-url" type="text" placeholder="유튜브 링크 붙여넣기 (https://youtu.be/...)">
+  <button id="yt-btn">불러오기</button>
+</div>
+
+<div id="drop">
+  <input type="file" id="file-input" accept=".mp4,.mov,.m4v,.avi,.mkv">
+  <div class="icon">🎬</div>
+  <div class="hint">
+    <strong>파일을 드래그하거나 클릭</strong><br>
+    mp4 · mov · m4v · avi · mkv
+  </div>
+  <div id="file-name"></div>
+  <div id="upload-progress">
+    <div id="upload-bar-track"><div id="upload-bar-fill"></div></div>
+    <div id="upload-info">
+      <span id="upload-pct">0%</span>
+      <span id="upload-time">—</span>
+    </div>
+  </div>
+</div>
+
+<div id="settings">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h2>VAD 설정</h2>
+    <div id="analyze-status"><div class="spin"></div><span id="analyze-msg">오디오 분석 중…</span></div>
+  </div>
+
+  <div class="slider-row">
+    <div class="slider-header">
+      <span class="slider-label">음성 감지 민감도</span>
+      <span class="slider-val" id="agg-val">보통 (2)</span>
+    </div>
+    <input type="range" id="agg-slider" min="0" max="3" step="1" value="2">
+    <span class="slider-desc">높을수록 음악·효과음을 더 공격적으로 비음성 판단 &nbsp;·&nbsp; 0=느슨 · 3=강함</span>
+  </div>
+
+  <div class="slider-row">
+    <div class="slider-header">
+      <span class="slider-label">말 전후 여유 시간</span>
+      <span class="slider-val" id="pad-val">150 ms</span>
+    </div>
+    <input type="range" id="pad-slider" min="50" max="500" step="10" value="150">
+    <span class="slider-desc">대사 앞뒤로 남길 여유 — 너무 짧으면 립싱크 어색 &nbsp;·&nbsp; 권장: 100 ~ 200 ms</span>
+  </div>
+
+  <div class="slider-row">
+    <div class="slider-header">
+      <span class="slider-label">최소 비음성 구간</span>
+      <span class="slider-val" id="sil-val">400 ms</span>
+    </div>
+    <input type="range" id="sil-slider" min="200" max="2000" step="50" value="400">
+    <span class="slider-desc">이 시간보다 짧은 쉬는 구간은 컷하지 않음 &nbsp;·&nbsp; 권장: 300 ~ 600 ms</span>
+  </div>
+
+  <div id="preview-bar">
+    <div class="pv-item"><div class="pv-label">컷 구간</div><div class="pv-val" id="pv-cuts">—</div></div>
+    <div class="pv-item"><div class="pv-label">제거 시간</div><div class="pv-val green" id="pv-removed">—</div></div>
+    <div class="pv-item"><div class="pv-label">절감율</div><div class="pv-val green" id="pv-pct">—</div></div>
+    <div class="pv-item"><div class="pv-label">편집 후</div><div class="pv-val" id="pv-final">—</div></div>
+  </div>
+</div>
+
+<div id="hl-settings">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h2>하이라이트 설정</h2>
+    <div id="hl-analyze-status" style="font-size:11px;color:var(--muted);display:none;align-items:center;gap:6px">
+      <div class="spin"></div><span id="hl-analyze-msg">불러오는 중…</span>
+    </div>
+  </div>
+
+  <div class="key-row">
+    <div class="key-head">
+      <span class="slider-label">Gemini API 키</span>
+      <span class="key-status" id="key-status">확인 중…</span>
+    </div>
+    <div class="key-input-row">
+      <input type="password" id="key-input" placeholder="AIza… (이 컴퓨터에만 저장됩니다)" autocomplete="off">
+      <button id="key-save">저장</button>
+      <button id="key-clear" class="key-clear">삭제</button>
+    </div>
+    <span class="slider-desc">키는 <code>~/.autocut/gemini_key</code> 에만 저장됩니다 (프로젝트 폴더 밖) &nbsp;·&nbsp; <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">키 발급 →</a></span>
+  </div>
+
+  <div class="slider-row">
+    <div class="slider-header">
+      <span class="slider-label">편집 방식</span>
+      <span class="slider-val" id="edit-mode-val">몽타주</span>
+    </div>
+    <div id="edit-mode-toggle" class="seg-toggle">
+      <button class="seg-btn active" data-montage="1">몽타주 (조각 이어붙이기)</button>
+      <button class="seg-btn" data-montage="0">단일 구간</button>
+    </div>
+    <span class="slider-desc">몽타주: 여러 조각을 이어붙여 재미 밀도↑ (1분 이내) &nbsp;·&nbsp; 단일: 한 구간 그대로</span>
+  </div>
+
+  <div class="slider-row">
+    <div class="slider-header">
+      <span class="slider-label">클립 개수</span>
+      <span class="slider-val" id="nclip-val">3개</span>
+    </div>
+    <input type="range" id="nclip-slider" min="1" max="5" step="1" value="3">
+    <span class="slider-desc">롱폼에서 뽑아낼 숏폼 개수 &nbsp;·&nbsp; 1 ~ 5개</span>
+  </div>
+
+  <div class="slider-row">
+    <div class="slider-header">
+      <span class="slider-label">클립 최대 길이</span>
+      <span class="slider-val" id="maxlen-val">60초</span>
+    </div>
+    <input type="range" id="maxlen-slider" min="15" max="60" step="5" value="60">
+    <span class="slider-desc">각 클립의 최대 길이 &nbsp;·&nbsp; 쇼츠는 60초 이하 권장</span>
+  </div>
+
+  <div id="hl-heatmap-note">유튜브 링크를 사용하면 시청자 ‘가장 많이 본 부분’을 반영합니다.</div>
+</div>
+
+<div class="btn-row">
+  <button id="run-btn" disabled>편집 시작</button>
+  <a id="srt-btn" class="sec-btn" href="#" download>↓ SRT 자막 다운로드</a>
+  <button id="open-btn" class="sec-btn">▶ 캡컷에서 열기</button>
+</div>
+
+<div id="error-box"></div>
+
+<div id="progress">
+  <div id="pbar-track"><div id="pbar-fill"></div></div>
+  <div class="prog-readout">
+    <div class="pr-item accent"><span class="pr-val" id="pbar-pct">0%</span><span class="pr-lbl">진행률</span></div>
+    <div class="pr-item"><span class="pr-val" id="elapsed-left">0:00</span><span class="pr-lbl">경과</span></div>
+    <div class="pr-item"><span class="pr-val" id="elapsed-estimate">—</span><span class="pr-lbl">남은 시간</span></div>
+  </div>
+  <div class="step-row" id="s-silence">
+    <div class="dot"></div>
+    <span class="step-label">무음 구간 감지</span>
+    <span class="step-badge" id="b-silence">—</span>
+  </div>
+  <div class="step-row" id="s-asr">
+    <div class="dot"></div>
+    <span class="step-label">음성 인식 (ASR)</span>
+    <span class="step-badge" id="b-asr">—</span>
+  </div>
+  <div class="step-row" id="s-filler">
+    <div class="dot"></div>
+    <span class="step-label">잔말·NG 컷</span>
+    <span class="step-badge" id="b-filler">—</span>
+  </div>
+  <div class="step-row" id="s-draft">
+    <div class="dot"></div>
+    <span class="step-label">캡컷 드래프트 생성</span>
+    <span class="step-badge" id="b-draft">—</span>
+  </div>
+</div>
+
+<div id="hl-progress">
+  <div id="hl-pbar-track"><div id="hl-pbar-fill"></div></div>
+  <div class="prog-readout">
+    <div class="pr-item accent"><span class="pr-val" id="hl-pbar-pct">0%</span><span class="pr-lbl">진행률</span></div>
+    <div class="pr-item"><span class="pr-val" id="hl-elapsed-left">0:00</span><span class="pr-lbl">경과</span></div>
+    <div class="pr-item"><span class="pr-val" id="hl-elapsed-est">—</span><span class="pr-lbl">남은 시간</span></div>
+  </div>
+  <div class="step-row" id="h-gemini">
+    <div class="dot"></div>
+    <span class="step-label">Gemini 영상 분석</span>
+    <span class="step-badge" id="b-gemini">—</span>
+  </div>
+  <div class="step-row" id="h-asr">
+    <div class="dot"></div>
+    <span class="step-label">클립 자막 생성</span>
+    <span class="step-badge" id="b-hasr">—</span>
+  </div>
+  <div class="step-row" id="h-draft">
+    <div class="dot"></div>
+    <span class="step-label">세로(9:16) 드래프트 생성</span>
+    <span class="step-badge" id="b-hdraft">—</span>
+  </div>
+</div>
+
+<div id="hl-results"></div>
+
+<div id="stats">
+  <div class="stats-grid">
+    <div class="stat-item">
+      <div class="stat-label">원본</div>
+      <div class="stat-value" id="v-original">—</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">편집 후</div>
+      <div class="stat-value green" id="v-final">—</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">절감</div>
+      <div class="stat-value green" id="v-saved">—</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">컷</div>
+      <div class="stat-value" id="v-cuts">—</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">자막</div>
+      <div class="stat-value" id="v-subs">—</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">잔말 제거</div>
+      <div class="stat-value" id="v-filler">—</div>
+    </div>
+  </div>
+  <hr class="divider">
+  <div class="stat-label" style="margin-bottom:6px">드래프트 위치</div>
+  <div class="draft-chip" id="v-draft-path">—</div>
+</div>
+
+<div id="transcript">
+  <h3>Transcript</h3>
+  <div id="transcript-list"></div>
+</div>
+
+<script>
+// ── DOM refs ──────────────────────────────────────────────────────────────
+const drop           = document.getElementById('drop');
+const fileInput      = document.getElementById('file-input');
+const fileName       = document.getElementById('file-name');
+const runBtn         = document.getElementById('run-btn');
+const srtBtn         = document.getElementById('srt-btn');
+const openBtn        = document.getElementById('open-btn');
+const progress       = document.getElementById('progress');
+const statsEl        = document.getElementById('stats');
+const transcriptEl   = document.getElementById('transcript');
+const transcriptList = document.getElementById('transcript-list');
+const errorBox       = document.getElementById('error-box');
+const previewBar     = document.getElementById('preview-bar');
+const analyzeStatus  = document.getElementById('analyze-status');
+const aggSlider      = document.getElementById('agg-slider');
+const padSlider      = document.getElementById('pad-slider');
+const silSlider      = document.getElementById('sil-slider');
+const uploadProgress = document.getElementById('upload-progress');
+const uploadBarFill  = document.getElementById('upload-bar-fill');
+const uploadPct      = document.getElementById('upload-pct');
+const uploadTime     = document.getElementById('upload-time');
+const elapsedLeft    = document.getElementById('elapsed-left');
+const elapsedEst     = document.getElementById('elapsed-estimate');
+const settingsEl     = document.getElementById('settings');
+const hlSettings     = document.getElementById('hl-settings');
+const hlProgress     = document.getElementById('hl-progress');
+const hlResults      = document.getElementById('hl-results');
+const ytUrl          = document.getElementById('yt-url');
+const ytBtn          = document.getElementById('yt-btn');
+const nclipSlider    = document.getElementById('nclip-slider');
+const maxlenSlider   = document.getElementById('maxlen-slider');
+const hlHeatmapNote  = document.getElementById('hl-heatmap-note');
+const hlAnalyzeStatus= document.getElementById('hl-analyze-status');
+const keyInput       = document.getElementById('key-input');
+const keySave        = document.getElementById('key-save');
+const keyClear       = document.getElementById('key-clear');
+const keyStatusEl    = document.getElementById('key-status');
+
+// ── State ─────────────────────────────────────────────────────────────────
+let mode        = 'silence';   // 'silence' | 'highlight'
+let speechFlags = {};  // {"0": Int8Array, "1":…, "2":…, "3":…}
+let vadDt       = 0.03;
+let vadTotal    = 0;
+let jobId       = null;
+let jobSuffix   = null;
+let selectedFile= null;
+let fillerCount = 0;
+let startTime   = 0;
+let elapsedTimer= null;
+let hlTimer     = null;
+let ready       = false;       // source loaded & analyzed
+let montage     = 1;           // 1 = 몽타주(다구간), 0 = 단일 구간
+
+const AGG_LABEL = ['느슨 (0)', '약함 (1)', '보통 (2)', '강함 (3)'];
+const STEPS          = ['s-silence','s-asr','s-filler','s-draft'];
+const STEP_PCT       = {silence:10, asr:60, filler:85, draft:95};
+const STEP_DONE_PCT  = {'s-silence':30,'s-asr':80,'s-filler':92,'s-draft':100};
+
+// ── Formatting ────────────────────────────────────────────────────────────
+const fmt    = s => { const m=Math.floor(s/60),ss=Math.floor(s%60); return m?`${m}m ${ss}s`:`${ss}s`; };
+const fmtMs  = ms=> { const s=Math.floor(ms/1000),m=Math.floor(s/60); return m?`${m}분 ${s%60}초`:`${s}초`; };
+const fmtDur = ms=> { const s=Math.max(0,Math.floor(ms/1000)),m=Math.floor(s/60); return `${m}:${String(s%60).padStart(2,'0')}`; };
+
+// ── JS VAD preview — mirrors vad.py _flags_to_keep ───────────────────────
+function computeVadPreview(agg, padMs, minSilMs) {
+  const flags = speechFlags[String(agg)];
+  if (!flags || !(vadTotal > 0)) return null;
+  const dt      = vadDt;
+  const pad     = padMs   / 1000;
+  const minSil  = minSilMs / 1000;
+
+  // 1. raw speech segments
+  const speech = [];
+  let inSp = false, t0 = 0;
+  for (let i = 0; i < flags.length; i++) {
+    const t = i * dt;
+    if (flags[i] && !inSp)      { t0 = t; inSp = true; }
+    else if (!flags[i] && inSp) { speech.push([t0, t]); inSp = false; }
+  }
+  if (inSp) speech.push([t0, flags.length * dt]);
+
+  if (!speech.length) return { cuts: 0, removed: vadTotal, keptSec: 0 };
+
+  // 2. merge gaps < minSil
+  const merged = [speech[0].slice()];
+  for (const [s, e] of speech.slice(1)) {
+    if (s - merged[merged.length-1][1] < minSil) merged[merged.length-1][1] = e;
+    else merged.push([s, e]);
+  }
+
+  // 3. apply padding + merge overlaps
+  const padded = merged.map(([s,e]) => [Math.max(0,s-pad), Math.min(vadTotal,e+pad)]);
+  const keep = [padded[0].slice()];
+  for (const [s,e] of padded.slice(1)) {
+    if (s <= keep[keep.length-1][1]) keep[keep.length-1][1] = Math.max(keep[keep.length-1][1],e);
+    else keep.push([s,e]);
+  }
+
+  const keptSec = keep.reduce((sum,[s,e])=>sum+e-s, 0);
+  // cuts = non-speech gaps being removed (between / before / after speech)
+  const nonSpeechGaps = (merged.length > 0 ? merged.length - 1 : 0)
+    + (merged[0][0] > 0.1 ? 1 : 0)
+    + (merged[merged.length-1][1] < vadTotal - 0.1 ? 1 : 0);
+  return { cuts: nonSpeechGaps, removed: vadTotal - keptSec, keptSec };
+}
+
+function updatePreview() {
+  const res = computeVadPreview(+aggSlider.value, +padSlider.value, +silSlider.value);
+  if (!res) return;
+  document.getElementById('pv-cuts').textContent    = res.cuts;
+  document.getElementById('pv-removed').textContent = fmt(res.removed);
+  document.getElementById('pv-pct').textContent     = Math.round(res.removed / vadTotal * 100) + '%';
+  document.getElementById('pv-final').textContent   = fmt(res.keptSec);
+}
+
+// ── Slider events ─────────────────────────────────────────────────────────
+aggSlider.addEventListener('input', () => {
+  document.getElementById('agg-val').textContent = AGG_LABEL[aggSlider.value];
+  updatePreview();
+});
+padSlider.addEventListener('input', () => {
+  document.getElementById('pad-val').textContent = padSlider.value + ' ms';
+  updatePreview();
+});
+silSlider.addEventListener('input', () => {
+  document.getElementById('sil-val').textContent = silSlider.value + ' ms';
+  updatePreview();
+});
+
+// ── Status message helper (mode-aware) ─────────────────────────────────────
+function setStatusMsg(txt) {
+  if (mode === 'highlight') {
+    hlAnalyzeStatus.style.display = 'flex';
+    document.getElementById('hl-analyze-msg').textContent = txt;
+  } else {
+    analyzeStatus.style.display = 'flex';
+    document.getElementById('analyze-msg').textContent = txt;
+  }
+}
+
+// ── /analyze (XHR; source = uploaded file OR youtube url) ───────────────────
+function runAnalyze({ file = null, url = '' }) {
+  jobId = null; jobSuffix = null; speechFlags = {}; ready = false;
+  runBtn.disabled = true;
+  previewBar.style.display = 'none';
+  hlResults.style.display = 'none';
+  const isUpload = !!file;
+
+  setStatusMsg(isUpload ? '업로드 중…' : '유튜브에서 불러오는 중…');
+
+  if (isUpload) {
+    uploadProgress.style.display = 'flex';
+    uploadBarFill.style.width = '0%'; uploadPct.textContent = '0%'; uploadTime.textContent = '—';
+  }
+
+  const fd = new FormData();
+  fd.append('mode', mode);
+  if (file) fd.append('file', file);
+  if (url)  fd.append('url', url);
+
+  const xhr = new XMLHttpRequest();
+  const t0 = Date.now();
+  let workTimer = null;
+
+  if (isUpload) {
+    xhr.upload.addEventListener('progress', e => {
+      if (!e.lengthComputable) return;
+      const pct = e.loaded / e.total, elMs = Date.now() - t0;
+      const remMs = Math.max(0, (pct > 0.01 ? elMs / pct : 0) - elMs);
+      uploadBarFill.style.width = Math.round(pct*100) + '%';
+      uploadPct.textContent = Math.round(pct*100) + '%';
+      uploadTime.textContent = pct >= 0.99 ? '완료' : `${fmtMs(elMs)} 경과 · 약 ${fmtMs(remMs)} 남음`;
+    });
+    xhr.upload.addEventListener('load', () => {
+      uploadPct.textContent = '100%';
+      uploadTime.textContent = `업로드 완료 · ${fmtMs(Date.now() - t0)}`;
+    });
+  }
+
+  // server-work elapsed ticker
+  const workStart = Date.now();
+  const workLabel = isUpload
+    ? (mode === 'highlight' ? '영상 준비 중…' : '음성 구간 분석 중…')
+    : '유튜브에서 불러오는 중…';
+  workTimer = setInterval(() => {
+    setStatusMsg(`${workLabel} ${fmtMs(Date.now() - workStart)} 경과`);
+  }, 500);
+
+  xhr.addEventListener('load', () => {
+    clearInterval(workTimer);
+    uploadProgress.style.display = 'none';
+
+    let d;
+    try { d = JSON.parse(xhr.responseText); }
+    catch(e) { setStatusMsg('오류: 응답 파싱 실패'); return; }
+
+    const errMsg = d.error || d.detail;
+    if (errMsg) { setStatusMsg('실패: ' + errMsg); return; }
+
+    jobId = d.job_id; jobSuffix = d.suffix; vadTotal = d.total_sec || 0;
+
+    // show the real title (esp. for YouTube, which loaded with only the URL)
+    if (d.title) fileName.textContent = (url ? '🔗 ' : '') + d.title;
+
+    if (mode === 'silence') {
+      if (!d.flags) { setStatusMsg('분석 실패: ' + JSON.stringify(d)); return; }
+      vadDt = d.dt;
+      speechFlags = {};
+      for (const [k, arr] of Object.entries(d.flags)) speechFlags[k] = new Int8Array(arr);
+      analyzeStatus.style.display = 'none';
+      previewBar.style.display = 'flex';
+      updatePreview();
+    } else {
+      hlAnalyzeStatus.style.display = 'none';
+      hlHeatmapNote.classList.toggle('on', !!d.heatmap_available);
+      hlHeatmapNote.textContent = d.heatmap_available
+        ? `✓ 유튜브 ‘가장 많이 본 부분’ 데이터를 반영합니다. (영상 ${fmt(vadTotal)})`
+        : `시청 집중도 데이터 없음 — 영상 내용만으로 분석합니다. (영상 ${fmt(vadTotal)})`;
+    }
+
+    ready = true;
+    runBtn.disabled = false;
+  });
+
+  xhr.addEventListener('error', () => { clearInterval(workTimer); setStatusMsg('오류: 네트워크 오류'); });
+
+  xhr.open('POST', '/analyze');
+  xhr.send(fd);
+}
+
+// ── File select / drop ────────────────────────────────────────────────────
+function handleFileSelect(f) {
+  selectedFile = f; fileName.textContent = f.name;
+  runAnalyze({ file: f });
+}
+fileInput.addEventListener('change', e => { const f=e.target.files[0]; if(f) handleFileSelect(f); });
+drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', ()=> drop.classList.remove('over'));
+drop.addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('over');
+  const f = e.dataTransfer.files[0]; if(f) handleFileSelect(f);
+});
+
+// ── YouTube load ───────────────────────────────────────────────────────────
+ytBtn.addEventListener('click', () => {
+  const url = ytUrl.value.trim();
+  if (!url) { ytUrl.focus(); return; }
+  selectedFile = null;
+  fileName.textContent = '🔗 ' + url;
+  runAnalyze({ url });
+});
+ytUrl.addEventListener('keydown', e => { if (e.key === 'Enter') ytBtn.click(); });
+
+// ── Mode toggle ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.mode === mode) return;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    mode = btn.dataset.mode;
+
+    // swap settings panels
+    settingsEl.style.display = (mode === 'silence') ? 'flex' : 'none';
+    hlSettings.style.display = (mode === 'highlight') ? 'flex' : 'none';
+    runBtn.textContent = (mode === 'highlight') ? '✨ 하이라이트 추출' : '편집 시작';
+
+    // reset shared UI; require re-analyze in the new mode
+    ready = false; runBtn.disabled = true;
+    previewBar.style.display = 'none';
+    hlResults.style.display = 'none';
+    srtBtn.style.display = 'none'; openBtn.style.display = 'none';
+    statsEl.style.display = 'none'; transcriptEl.style.display = 'none';
+    errorBox.style.display = 'none';
+    if (selectedFile) runAnalyze({ file: selectedFile });
+    else if (ytUrl.value.trim()) runAnalyze({ url: ytUrl.value.trim() });
+  });
+});
+
+// ── Highlight sliders ────────────────────────────────────────────────────────
+nclipSlider.addEventListener('input', () => {
+  document.getElementById('nclip-val').textContent = nclipSlider.value + '개';
+});
+maxlenSlider.addEventListener('input', () => {
+  document.getElementById('maxlen-val').textContent = maxlenSlider.value + '초';
+});
+
+// edit-mode (montage vs single) toggle
+document.querySelectorAll('#edit-mode-toggle .seg-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#edit-mode-toggle .seg-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    montage = +btn.dataset.montage;
+    document.getElementById('edit-mode-val').textContent = montage ? '몽타주' : '단일 구간';
+  });
+});
+
+
+// ── Gemini API key management ────────────────────────────────────────────────
+async function refreshKeyStatus() {
+  try {
+    const d = await (await fetch('/gemini-key')).json();
+    if (d.set) {
+      const src = d.source === 'env' ? '환경변수' : '저장됨';
+      keyStatusEl.textContent = `✓ ${src}`;
+      keyStatusEl.className = 'key-status set';
+      keyInput.placeholder = '키 저장됨 — 변경하려면 새 키 입력';
+      keyClear.style.display = (d.source === 'env') ? 'none' : 'inline-flex';
+    } else {
+      keyStatusEl.textContent = '키 필요';
+      keyStatusEl.className = 'key-status unset';
+      keyInput.placeholder = 'AIza… (이 컴퓨터에만 저장됩니다)';
+      keyClear.style.display = 'none';
+    }
+  } catch(e) {
+    keyStatusEl.textContent = '상태 확인 실패';
+    keyStatusEl.className = 'key-status unset';
+  }
+}
+
+keySave.addEventListener('click', async () => {
+  const k = keyInput.value.trim();
+  if (!k) { keyInput.focus(); return; }
+  keySave.textContent = '저장 중…'; keySave.disabled = true;
+  try {
+    const fd = new FormData(); fd.append('key', k);
+    const d = await (await fetch('/gemini-key', { method:'POST', body:fd })).json();
+    if (d.error) { keyStatusEl.textContent = d.error; keyStatusEl.className = 'key-status unset'; }
+    else { keyInput.value = ''; await refreshKeyStatus(); }
+  } catch(e) { keyStatusEl.textContent = '저장 오류'; }
+  keySave.textContent = '저장'; keySave.disabled = false;
+});
+keyInput.addEventListener('keydown', e => { if (e.key === 'Enter') keySave.click(); });
+
+keyClear.addEventListener('click', async () => {
+  try { await fetch('/gemini-key', { method:'DELETE' }); } catch(e) {}
+  keyInput.value = ''; await refreshKeyStatus();
+});
+
+refreshKeyStatus();
+
+// ── Progress helpers ──────────────────────────────────────────────────────
+const setPbar   = pct => {
+  document.getElementById('pbar-fill').style.width = pct+'%';
+  document.getElementById('pbar-pct').textContent = Math.round(pct)+'%';
+};
+const setStep   = (id, state) => {
+  STEPS.forEach(s => { const el=document.getElementById(s); el.classList.remove('active','done'); if(s===id) el.classList.add(state); });
+  if(state==='active') setPbar(STEP_PCT[id.replace('s-','')]);
+};
+const markDone  = (id, badge) => {
+  const el = document.getElementById(id);
+  el.classList.remove('active'); el.classList.add('done');
+  const b = document.getElementById('b-'+id.replace('s-',''));
+  if(b && badge) b.textContent = badge;
+  setPbar(STEP_DONE_PCT[id]);
+};
+// estimated total processing time based on video duration (rough heuristic)
+// Silero VAD: ~0.3x realtime, ASR medium CPU: ~3.5x realtime, rest: ~5s fixed
+const estimateTotal = () => Math.round(vadTotal * 4 + 10);
+
+const startElapsed = () => {
+  startTime = Date.now();
+  const estSec = estimateTotal();
+  elapsedLeft.textContent = '0:00';
+  elapsedEst.textContent  = '~' + fmtDur(estSec * 1000);
+  elapsedTimer = setInterval(() => {
+    const elMs = Date.now() - startTime;
+    const remSec = Math.max(0, estSec - Math.floor(elMs / 1000));
+    elapsedLeft.textContent = fmtDur(elMs);
+    elapsedEst.textContent  = remSec > 2 ? '~' + fmtDur(remSec * 1000) : '거의 완료';
+  }, 1000);
+};
+const stopElapsed = () => {
+  clearInterval(elapsedTimer);
+  elapsedLeft.textContent = fmtDur(Date.now() - startTime);
+  elapsedEst.textContent  = '완료';
+  setPbar(100);
+};
+
+// ── Generic SSE reader ──────────────────────────────────────────────────────
+async function streamSSE(url, fd, onEvent) {
+  const res = await fetch(url, { method:'POST', body:fd });
+  const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+  while (true) {
+    const { done, value } = await reader.read(); if(done) break;
+    buf += dec.decode(value, { stream:true });
+    const lines = buf.split('\n\n'); buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data:')) continue;
+      onEvent(JSON.parse(line.slice(5).trim()));
+    }
+  }
+}
+
+// ── Run dispatch ────────────────────────────────────────────────────────────
+runBtn.addEventListener('click', () => {
+  if (!ready || !jobId) return;
+  if (mode === 'highlight') runHighlight();
+  else runSilence();
+});
+
+async function runSilence() {
+  runBtn.disabled = true; srtBtn.style.display = 'none'; openBtn.style.display = 'none';
+  errorBox.style.display = 'none'; statsEl.style.display = 'none';
+  transcriptEl.style.display = 'none'; transcriptList.innerHTML = ''; fillerCount = 0;
+  STEPS.forEach(s => document.getElementById(s).classList.remove('active','done'));
+  ['silence','asr','filler','draft'].forEach(k => { const b=document.getElementById('b-'+k); if(b) b.textContent='—'; });
+  elapsedLeft.textContent = ''; elapsedEst.textContent = '';
+  setPbar(0); progress.style.display = 'flex'; startElapsed();
+
+  const fd = new FormData();
+  fd.append('job_id',         jobId);
+  fd.append('suffix',         jobSuffix);
+  fd.append('aggressiveness', aggSlider.value);
+  fd.append('pad_before_ms',  padSlider.value);
+  fd.append('pad_after_ms',   padSlider.value);
+  fd.append('min_silence_ms', silSlider.value);
+
+  try { await streamSSE('/process', fd, handleEvent); }
+  catch(e) { showError('연결 오류: '+e.message); }
+  runBtn.disabled = false;
+}
+
+// ── Highlight run ─────────────────────────────────────────────────────────────
+const HSTEPS = ['h-gemini','h-asr','h-draft'];
+const HPCT      = { gemini: 15, asr: 60, draft: 80 };
+const HDONE_PCT = { 'h-gemini': 55, 'h-asr': 75, 'h-draft': 100 };
+const setHPbar = pct => {
+  document.getElementById('hl-pbar-fill').style.width = pct+'%';
+  document.getElementById('hl-pbar-pct').textContent = Math.round(pct)+'%';
+};
+function setHStep(id, state) {
+  HSTEPS.forEach(s => { const el=document.getElementById(s); el.classList.remove('active','done'); if(s===id) el.classList.add(state); });
+  if(state==='active') setHPbar(HPCT[id.replace('h-','')]);
+}
+function markHDone(id, badge) {
+  const el = document.getElementById(id); el.classList.remove('active'); el.classList.add('done');
+  const bmap = {'h-gemini':'b-gemini','h-asr':'b-hasr','h-draft':'b-hdraft'};
+  const b = document.getElementById(bmap[id]); if(b && badge) b.textContent = badge;
+  setHPbar(HDONE_PCT[id]);
+}
+function startHElapsed() {
+  startTime = Date.now();
+  // Gemini upload+analysis dominates; rough estimate scales with video length
+  const estSec = Math.round(vadTotal * 1.2 + 40);
+  document.getElementById('hl-elapsed-left').textContent = '0:00';
+  document.getElementById('hl-elapsed-est').textContent  = '~' + fmtDur(estSec * 1000);
+  hlTimer = setInterval(() => {
+    const elMs = Date.now() - startTime;
+    const remSec = Math.max(0, estSec - Math.floor(elMs/1000));
+    document.getElementById('hl-elapsed-left').textContent = fmtDur(elMs);
+    document.getElementById('hl-elapsed-est').textContent  = remSec > 3 ? '~' + fmtDur(remSec*1000) : '마무리 중';
+  }, 1000);
+}
+function stopHElapsed() {
+  clearInterval(hlTimer);
+  document.getElementById('hl-elapsed-left').textContent = fmtDur(Date.now()-startTime);
+  document.getElementById('hl-elapsed-est').textContent  = '완료';
+  setHPbar(100);
+}
+
+async function runHighlight() {
+  runBtn.disabled = true; errorBox.style.display = 'none';
+  hlResults.style.display = 'none'; hlResults.innerHTML = '';
+  HSTEPS.forEach(s => document.getElementById(s).classList.remove('active','done'));
+  ['b-gemini','b-hasr','b-hdraft'].forEach(id => { const b=document.getElementById(id); if(b) b.textContent='—'; });
+  setHPbar(0); hlProgress.style.display = 'flex'; startHElapsed();
+
+  const fd = new FormData();
+  fd.append('job_id',  jobId);
+  fd.append('n_clips', nclipSlider.value);
+  fd.append('max_sec', maxlenSlider.value);
+  fd.append('montage', montage);
+
+  try { await streamSSE('/process-highlight', fd, handleHLEvent); }
+  catch(e) { stopHElapsed(); showError('연결 오류: '+e.message); }
+  runBtn.disabled = false;
+}
+
+function handleHLEvent(d) {
+  switch(d.event) {
+    case 'step':           setHStep('h-'+d.step, 'active'); break;
+    case 'highlight_done': markHDone('h-gemini', `${d.clip_count}개${d.used_heatmap?' · 🔥반영':''}`); break;
+    case 'clip_done':      setHStep('h-draft', 'active'); document.getElementById('b-hdraft').textContent = `${d.index}/${d.total}`; document.getElementById('b-hdraft').style.opacity=1; break;
+    case 'highlight_result':
+      markHDone('h-asr', '완료'); markHDone('h-draft', `${d.clips.length}개`);
+      stopHElapsed(); renderClips(d);
+      break;
+    case 'error': stopHElapsed(); showError(d.message); break;
+  }
+}
+
+function renderClips(d) {
+  hlResults.innerHTML = '';
+  const header = document.createElement('div');
+  header.style.cssText = 'font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em';
+  header.textContent = `하이라이트 ${d.clips.length}개 · 원본 ${fmt(d.original_sec)}`;
+  hlResults.appendChild(header);
+
+  d.clips.forEach(c => {
+    const card = document.createElement('div'); card.className = 'clip-card';
+    card.innerHTML = `
+      <div class="clip-head">
+        <span class="clip-rank">#${c.index}</span>
+        <span class="clip-title">${escapeHtml(c.title)}</span>
+        <span class="clip-score">★ ${c.score}</span>
+      </div>
+      <div class="clip-meta">
+        <span>⏱ ${c.duration}s</span>
+        ${c.seg_count > 1 ? `<span>🎬 ${c.seg_count}조각</span>` : ''}
+        <span>원본 ${fmtClock(c.start)} → ${fmtClock(c.end)}</span>
+        <span>자막 ${c.sub_count}문장</span>
+      </div>
+      <div class="clip-reason">${escapeHtml(c.reason)}</div>
+      <div class="clip-actions">
+        <a class="clip-chip" href="/download/srt/${c.srt_id}" download="${c.draft_name}.srt">↓ SRT</a>
+        <button class="clip-chip open-clip">▶ 캡컷에서 열기</button>
+      </div>
+      <div class="clip-path">${c.draft_name}</div>`;
+    card.querySelector('.open-clip').addEventListener('click', openCapcut);
+    hlResults.appendChild(card);
+  });
+  hlResults.style.display = 'flex';
+}
+
+function fmtClock(s) {
+  const m = Math.floor(s/60), ss = Math.floor(s%60);
+  return `${m}:${String(ss).padStart(2,'0')}`;
+}
+function escapeHtml(t) {
+  return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ── SSE event handler ─────────────────────────────────────────────────────
+function handleEvent(d) {
+  switch(d.event) {
+    case 'step':         setStep('s-'+d.step, 'active'); break;
+    case 'silence_done': markDone('s-silence', `${d.keep_count}구간 · -${d.removed_sec}s`); break;
+    case 'asr_done':     markDone('s-asr',     `${d.segment_count}문장`); break;
+    case 'filler_done':  fillerCount=d.filler_count; markDone('s-filler', `${d.filler_count}개 제거`); break;
+    case 'done':
+      stopElapsed(); markDone('s-draft','완료'); showStats(d);
+      if(d.srt_id){ srtBtn.href=`/download/srt/${d.srt_id}`; srtBtn.download=`${d.draft_name}.srt`; srtBtn.style.display='inline-flex'; }
+      openBtn.style.display='inline-flex';
+      break;
+    case 'error': stopElapsed(); showError(d.message); break;
+  }
+}
+
+function showStats(d) {
+  const saved = d.original_sec - d.final_sec;
+  const pct   = Math.round(saved / d.original_sec * 100);
+  document.getElementById('v-original').textContent = fmt(d.original_sec);
+  document.getElementById('v-final').textContent    = fmt(d.final_sec);
+  document.getElementById('v-saved').textContent    = `${fmt(saved)} (${pct}%)`;
+  document.getElementById('v-cuts').textContent     = d.cuts;
+  document.getElementById('v-subs').textContent     = d.subtitle_count;
+  document.getElementById('v-filler').textContent   = fillerCount+'개';
+  document.getElementById('v-draft-path').textContent = d.draft_path;
+  statsEl.style.display = 'block';
+  if (d.transcript?.length) {
+    d.transcript.forEach(s => {
+      const row = document.createElement('div'); row.className='sub-row';
+      row.innerHTML=`<span class="sub-time">${s.start.toFixed(1)}s – ${s.end.toFixed(1)}s</span><span class="sub-text">${s.text}</span>`;
+      transcriptList.appendChild(row);
+    });
+    transcriptEl.style.display='block';
+  }
+}
+
+async function openCapcut(e) {
+  const btn = (e && e.currentTarget) ? e.currentTarget : openBtn;
+  const orig = btn.textContent;
+  btn.textContent = '실행 중…'; btn.disabled = true;
+  try {
+    const d = await (await fetch('/open-capcut',{method:'POST'})).json();
+    btn.textContent = d.error ? '실행 실패' : '✓ 캡컷 실행됨';
+    if(d.error) showError(d.error);
+  } catch(err) { btn.textContent='오류'; showError(err.message); }
+  setTimeout(()=>{ btn.textContent = orig; btn.disabled = false; }, 3000);
+}
+openBtn.addEventListener('click', openCapcut);
+
+function showError(msg) {
+  errorBox.textContent='오류: '+msg; errorBox.style.display='block'; runBtn.disabled=false;
+}
+</script>
+</body>
+</html>

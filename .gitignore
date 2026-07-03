@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# AutoCut runtime data (do NOT transfer)
+uploads/
+
+# secrets (key lives in ~/.autocut/gemini_key, but ignore any local copy)
+.gemini_key
+
+# OS cruft
+.DS_Store
+Thumbs.db

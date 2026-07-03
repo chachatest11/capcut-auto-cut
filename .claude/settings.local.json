@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python3 --version 2>$null)",
+      "PowerShell(py --version 2>$null)",
+      "PowerShell(py -c \"import platform; print\\(platform.system\\(\\), platform.machine\\(\\)\\)\")",
+      "PowerShell(ffmpeg -version 2>&1)",
+      "mcp__Claude_Preview__preview_start",
+      "PowerShell(Get-ChildItem \"$env:LOCALAPPDATA\\\\CapCut\\\\Apps\" -Recurse -Filter \"CapCut.exe\" | Select-Object FullName | Select-Object -First 3)",
+      "PowerShell(py -m pip install webrtcvad-wheels 2>&1)",
+      "Bash(py -m pip install silero-vad)",
+      "Bash(py -c \"import yt_dlp, google.genai; print\\('ok', yt_dlp.version.__version__\\)\")",
+      "Bash(py -m py_compile app.py draft.py vad.py youtube.py highlight.py)",
+      "Bash(py -c \"from google import genai; from google.genai import types; import youtube, highlight; print\\('imports OK; model=', highlight.MODEL\\)\")",
+      "Bash(py -m py_compile app.py highlight.py)",
+      "Bash(py -m pip install opencv-python)",
+      "Bash(py -c \"import cv2; print\\('cv2', cv2.__version__\\); print\\('cascade exists:', bool\\(cv2.CascadeClassifier\\(cv2.data.haarcascades+'haarcascade_frontalface_default.xml'\\).empty\\(\\)==False\\)\\)\")",
+      "Bash(py -m py_compile app.py draft.py crop.py highlight.py)",
+      "Bash(PYTHONPATH=\"C:/Users/KBS/Desktop/AutoCut\" py -c \"from app import _find_capcut_exe; p=_find_capcut_exe\\(\\); print\\('found:', p\\); print\\('exists:', p.exists\\(\\) if p else False\\)\")",
+      "Bash(py -m py_compile app.py)",
+      "Bash(py -c \"import importlib.metadata as m; pkgs=['fastapi','uvicorn','python-multipart','av','numpy','faster-whisper','silero-vad','torch','google-genai','yt-dlp','opencv-python']; [print\\(p, m.version\\(p\\)\\) for p in pkgs]\")",
+      "Bash(PYTHONPATH=\"C:/Users/KBS/Desktop/AutoCut\" py -)"
+    ]
+  }
+}
